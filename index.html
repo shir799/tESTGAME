@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sticky PvP Brawler</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #game {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        .char {
+            position: absolute;
+            width: 70px;
+            height: 100px;
+            transform: translate(-50%, -50%);
+        }
+        .head,
+        .body,
+        .arm {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .head {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+        }
+        .body {
+            top: 35px;
+            width: 14px;
+            height: 50px;
+        }
+        .arm {
+            width: 12px;
+            height: 35px;
+            top: 40px;
+            transform-origin: top center;
+        }
+        .left { left: 18px; transform: translateX(0) rotate(-30deg); }
+        .right { left: 40px; transform: translateX(0) rotate(30deg); }
+        .projectile {
+            position: absolute;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+<div id="game">
+    <div id="player" class="char">
+        <div class="head" style="background:#0ff"></div>
+        <div class="body" style="background:#0ff"></div>
+        <div class="arm left" style="background:#0ff"></div>
+        <div class="arm right" style="background:#0ff"></div>
+    </div>
+    <div id="enemy" class="char">
+        <div class="head" style="background:#f33"></div>
+        <div class="body" style="background:#f33"></div>
+        <div class="arm left" style="background:#f33"></div>
+        <div class="arm right" style="background:#f33"></div>
+    </div>
+</div>
+<script>
+const game = document.getElementById('game');
+const player = document.getElementById('player');
+const enemy = document.getElementById('enemy');
+let bounds = {w:0,h:0};
+const keys = {w:false,a:false,s:false,d:false,q:false};
+const mouse = {x:0,y:0};
+let projectiles = [];
+let cooldown = 0;
+let playerState = {x:0,y:0,speed:6,size:35,health:100,stun:0,angle:0};
+let enemyState = {x:0,y:0,speed:4,size:35,health:100,stun:0,angle:0};
+function setup(){
+    const r = game.getBoundingClientRect();
+    bounds.w = r.width; bounds.h = r.height;
+    playerState.x = bounds.w/3; playerState.y = bounds.h/2;
+    enemyState.x = bounds.w*2/3; enemyState.y = bounds.h/2;
+    projectiles.forEach(p=>p.el.remove());
+    projectiles = [];
+    cooldown = 0;
+}
+window.addEventListener('keydown', e=>{keys[e.key.toLowerCase()] = true;});
+window.addEventListener('keyup', e=>{keys[e.key.toLowerCase()] = false;});
+game.addEventListener('mousemove', e=>{
+    const r = game.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
+});
+game.addEventListener('click', ()=>{
+    if(playerState.stun<=0){
+        fire('player');
+    }
+});
+function fire(owner){
+    const state = owner==='player'?playerState:enemyState;
+    const angle = Math.atan2(mouse.y - state.y, mouse.x - state.x);
+    const el = document.createElement('div');
+    el.className = 'projectile';
+    el.style.background = owner==='player'?'#0ff':'#f00';
+    el.style.width = '16px';
+    el.style.height = '16px';
+    game.appendChild(el);
+    projectiles.push({el,x:state.x,y:state.y,angle,speed:8,owner});
+}
+function update(){
+    if(keys.w) playerState.y -= playerState.speed;
+    if(keys.s) playerState.y += playerState.speed;
+    if(keys.a) playerState.x -= playerState.speed;
+    if(keys.d) playerState.x += playerState.speed;
+    playerState.x = Math.max(playerState.size, Math.min(bounds.w-playerState.size, playerState.x));
+    playerState.y = Math.max(playerState.size, Math.min(bounds.h-playerState.size, playerState.y));
+    playerState.angle = Math.atan2(mouse.y-playerState.y, mouse.x-playerState.x);
+    // simple enemy follow
+    const dx = playerState.x - enemyState.x;
+    const dy = playerState.y - enemyState.y;
+    const dist = Math.hypot(dx,dy);
+    if(dist>200){
+        enemyState.x += dx/dist*enemyState.speed;
+        enemyState.y += dy/dist*enemyState.speed;
+    }
+    enemyState.angle = Math.atan2(dy,dx);
+    // projectiles
+    for(let i=projectiles.length-1;i>=0;i--){
+        const p = projectiles[i];
+        p.x += Math.cos(p.angle)*p.speed;
+        p.y += Math.sin(p.angle)*p.speed;
+        p.el.style.left = p.x+'px';
+        p.el.style.top = p.y+'px';
+        const target = p.owner==='player'?enemyState:playerState;
+        const dist2 = Math.hypot(p.x-target.x,p.y-target.y);
+        if(dist2 < 20){
+            target.health -= 10;
+            p.el.remove();
+            projectiles.splice(i,1);
+        }
+        if(p.x<0||p.x>bounds.w||p.y<0||p.y>bounds.h){
+            p.el.remove();
+            projectiles.splice(i,1);
+        }
+    }
+}
+function draw(){
+    player.style.left = playerState.x+'px';
+    player.style.top = playerState.y+'px';
+    enemy.style.left = enemyState.x+'px';
+    enemy.style.top = enemyState.y+'px';
+}
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+window.onload=()=>{setup();loop();};
+window.onresize=setup;
+</script>
+</body>
+</html>
